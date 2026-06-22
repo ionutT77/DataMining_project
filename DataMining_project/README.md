@@ -107,8 +107,8 @@ Execute the cells sequentially.
 *Note: Section 5 (Multilingual BERT) is computationally intensive. Running this specific section on Google Colab with GPU acceleration is recommended for large datasets.*
 
 ## Team Members
-- [Your Name Here]
-- [Teammate Name Here]
+- [Toma Ionut-Adrian]
+- [Boros Fabian]
 
 ## License
 This project is created for academic purposes for the Data Mining course at the Politehnica University of Timisoara.
