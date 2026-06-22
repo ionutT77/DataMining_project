@@ -1,0 +1,35 @@
+# Documentation (private - not for GitHub)
+PROJECT_DOCUMENTATION.md
+implementation_plan.md
+
+
+# Data files (too large for git)
+data/raw/
+data/processed/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
