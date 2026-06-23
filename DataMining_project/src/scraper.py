@@ -1,7 +1,7 @@
 """
-eMAG Product Reviews Scraper
-=============================
-Scrapes product reviews from eMAG.ro across multiple electronics categories.
+CEL.ro Product Reviews Scraper
+===============================
+Scrapes product reviews from CEL.ro across multiple electronics categories.
 Uses requests + BeautifulSoup (as taught in Lab 5).
 
 Usage:
@@ -19,30 +19,32 @@ import random
 import os
 import re
 import json
+import sys
 from tqdm import tqdm
 from datetime import datetime
+
+# Force UTF-8 encoding for standard output (Windows console fix)
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-BASE_URL = "https://www.emag.ro"
+BASE_URL = "https://www.cel.ro"
 
 CATEGORIES = {
-    "phones": "/telefoane-mobile/c",
-    "laptops": "/laptopuri/c",
-    "headphones": "/casti/c",
-    "tablets": "/tablete/c",
+    "phones": "/telefoane-mobile/",
+    "laptops": "/laptopuri/",
+    "headphones": "/casti-bluetooth/",
+    "tablets": "/tablete/",
 }
 
-# How many listing pages to crawl per category (each page ~ 60 products)
+# How many listing pages to crawl per category
 MAX_LISTING_PAGES_PER_CATEGORY = 3
 
-# Max review pages to fetch per product
-MAX_REVIEW_PAGES_PER_PRODUCT = 5
-
 # Polite scraping delays (seconds)
-MIN_DELAY = 2.0
-MAX_DELAY = 4.0
+MIN_DELAY = 1.5
+MAX_DELAY = 3.5
 
 # Rotating User-Agents to reduce blocking risk
 USER_AGENTS = [
@@ -92,6 +94,8 @@ def _safe_get(url: str, session: requests.Session, retries: int = 3):
             if resp.status_code == 403:
                 print(f"  ⛔ Blocked (403) on {url}")
                 return None
+            # Other errors
+            print(f"  ⚠ HTTP {resp.status_code} on {url}")
         except requests.RequestException as exc:
             print(f"  ⚠ Request error: {exc}")
             time.sleep(5)
@@ -102,62 +106,165 @@ def _safe_get(url: str, session: requests.Session, retries: int = 3):
 # Scraping functions
 # ---------------------------------------------------------------------------
 def get_product_links(session, category_path: str, max_pages: int):
-    """Scrape product URLs from category listing pages."""
+    """Scrape product URLs from CEL.ro category listing pages."""
     product_links = []
     for page in range(1, max_pages + 1):
-        url = f"{BASE_URL}{category_path}/p{page}/c"
+        if page == 1:
+            url = f"{BASE_URL}{category_path}"
+        else:
+            url = f"{BASE_URL}{category_path}0a-{page}"
+
         resp = _safe_get(url, session)
         if resp is None:
             break
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # eMAG product cards typically use data-url or href in card-v2 links
-        cards = soup.select("a.card-v2-title, a.product-title")
+        # CEL.ro product cards: div.product_data contains a.product_link
+        cards = soup.select("a.product_link")
         if not cards:
-            # Fallback: try generic product links
-            cards = soup.select("a[href*='/pd/']")
+            # Fallback: try any link inside productListing-tot
+            cards = soup.select("div.product_data a[href*='-p']")
 
         for card in cards:
             href = card.get("href", "")
-            if href and "/pd/" in href:
+            if href:
                 full_url = href if href.startswith("http") else BASE_URL + href
-                product_links.append(full_url)
+                # Only keep actual product pages (they end with -l/)
+                if "-l/" in full_url or "-p" in full_url:
+                    product_links.append(full_url)
+
+        if not cards:
+            print(f"     No more products found on page {page}. Stopping.")
+            break
 
         _polite_sleep()
 
     return list(set(product_links))  # deduplicate
 
 
-def extract_product_info(soup):
-    """Extract product name and price from a product page."""
+def extract_product_info_from_jsonld(soup):
+    """
+    Extract product name, price, rating, and reviews from JSON-LD structured data.
+    CEL.ro embeds schema.org Product data in <script type="application/ld+json">.
+    """
+    product_data = {
+        "name": "",
+        "price": "",
+        "brand": "",
+        "rating_value": 0,
+        "rating_count": 0,
+        "reviews": [],
+    }
+
+    scripts = soup.find_all("script", type="application/ld+json")
+    for script in scripts:
+        try:
+            data = json.loads(script.string)
+            # Data can be a list or a single object
+            items = data if isinstance(data, list) else [data]
+
+            for item in items:
+                if item.get("@type") == "Product":
+                    product_data["name"] = item.get("name", "")
+                    product_data["brand"] = item.get("brand", {}).get("name", "")
+
+                    # Price from offers
+                    offers = item.get("offers", {})
+                    product_data["price"] = offers.get("price", "")
+
+                    # Aggregate rating
+                    agg_rating = item.get("aggregateRating", {})
+                    if agg_rating:
+                        product_data["rating_value"] = agg_rating.get("ratingValue", 0)
+                        product_data["rating_count"] = agg_rating.get("ratingCount", 0)
+
+                    # Reviews from JSON-LD
+                    review_list = item.get("review", [])
+                    for rev in review_list:
+                        review_entry = {
+                            "review_title": "",
+                            "review_text": "",
+                            "star_rating": 0,
+                            "review_date": "",
+                            "reviewer_name": "",
+                        }
+
+                        # Author
+                        author = rev.get("author", {})
+                        if isinstance(author, dict):
+                            review_entry["reviewer_name"] = author.get("name", "")
+                        elif isinstance(author, str):
+                            review_entry["reviewer_name"] = author
+
+                        # Rating
+                        rev_rating = rev.get("reviewRating", {})
+                        if rev_rating:
+                            review_entry["star_rating"] = int(
+                                rev_rating.get("ratingValue", 0)
+                            )
+
+                        # Text / body
+                        review_entry["review_text"] = rev.get(
+                            "reviewBody", rev.get("description", "")
+                        )
+                        review_entry["review_title"] = rev.get("name", "")
+
+                        # Date
+                        review_entry["review_date"] = rev.get("datePublished", "")
+
+                        product_data["reviews"].append(review_entry)
+
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            continue
+
+    return product_data
+
+
+def extract_product_info_from_html(soup):
+    """Fallback: extract product name and price directly from HTML."""
     name = ""
     price = ""
 
-    # Product name
-    title_tag = soup.select_one("h1.page-title, h1")
+    # Product name — CEL.ro uses h1 for the product title
+    title_tag = soup.select_one("h1.product_title, h1.productTitle, h1")
     if title_tag:
         name = title_tag.get_text(strip=True)
 
-    # Price
-    price_tag = soup.select_one("p.product-new-price, .product-highlight-price")
+    # Price — span.price with content attribute
+    price_tag = soup.select_one("span.price[content]")
     if price_tag:
-        price_text = price_tag.get_text(strip=True)
-        # Extract numeric price
-        price_nums = re.findall(r"[\d.,]+", price_text.replace(".", "").replace(",", "."))
-        if price_nums:
-            price = price_nums[0]
+        price = price_tag.get("content", "")
+    elif price_tag := soup.select_one("span.price"):
+        price = price_tag.get_text(strip=True)
 
     return name, price
 
 
-def extract_reviews_from_page(soup, product_name, product_price, category):
-    """Extract all reviews visible on the current page."""
+def extract_reviews_from_html(soup, product_name, product_price, category):
+    """
+    Extract reviews directly from the HTML review section.
+    This is the fallback when JSON-LD doesn't contain individual reviews.
+    """
     reviews = []
 
-    review_containers = soup.select(
-        "div.review-body, div.product-review-body, "
-        "div[class*='review'], div.feedback-body"
+    # Check if there are no reviews
+    no_reviews = soup.select_one("div.noReviews")
+    if no_reviews:
+        return reviews
+
+    # CEL.ro review section
+    review_section = soup.select_one(
+        'div.productCol.reviews, div[data-tab="reviews"]'
+    )
+    if not review_section:
+        return reviews
+
+    # Look for individual review containers
+    # CEL.ro uses various patterns for review items
+    review_containers = review_section.select(
+        "div.review-item, div.comment-item, div.review, "
+        "div[class*='comment'], div[class*='feedback']"
     )
 
     for container in review_containers:
@@ -165,8 +272,9 @@ def extract_reviews_from_page(soup, product_name, product_price, category):
             # Star rating
             star_rating = 0
             stars_el = container.select_one(
-                "span.star-rating-text, div.star-rating, "
-                "span[class*='star'], div[class*='rating']"
+                "span.star-rating, div.star-rating, "
+                "span[class*='star'], div[class*='rating'], "
+                "span.nota, div.nota"
             )
             if stars_el:
                 star_text = stars_el.get_text(strip=True)
@@ -174,23 +282,36 @@ def extract_reviews_from_page(soup, product_name, product_price, category):
                 if nums:
                     star_rating = int(nums[0])
 
+            # Also check for star icons (filled stars)
+            if star_rating == 0:
+                filled_stars = container.select(
+                    "i.icon-star-full, i.icon-star, "
+                    "span.icon-star-full, span.star.filled"
+                )
+                if filled_stars:
+                    star_rating = len(filled_stars)
+
             # Review text
             review_text = ""
             text_el = container.select_one(
-                "p.review-text, div.review-text, "
-                "span.review-text, p[class*='review']"
+                "div.review-text, p.review-text, "
+                "div.comment-text, p.comment-text, "
+                "div.text, p.text"
             )
             if text_el:
                 review_text = text_el.get_text(strip=True)
             else:
                 # Fallback: get all paragraph text
                 paragraphs = container.find_all("p")
-                review_text = " ".join(p.get_text(strip=True) for p in paragraphs)
+                review_text = " ".join(
+                    p.get_text(strip=True) for p in paragraphs
+                )
 
             # Review title
             review_title = ""
             title_el = container.select_one(
-                "span.review-title, h4, strong"
+                "span.review-title, h4, strong, "
+                "div.title, span.title"
             )
             if title_el:
                 review_title = title_el.get_text(strip=True)
@@ -198,7 +319,8 @@ def extract_reviews_from_page(soup, product_name, product_price, category):
             # Date
             review_date = ""
             date_el = container.select_one(
-                "span.review-date, time, span[class*='date']"
+                "span.review-date, time, span[class*='date'], "
+                "div.date, span.data"
             )
             if date_el:
                 review_date = date_el.get_text(strip=True)
@@ -207,31 +329,36 @@ def extract_reviews_from_page(soup, product_name, product_price, category):
             reviewer = ""
             reviewer_el = container.select_one(
                 "span.review-author, span[class*='author'], "
-                "a[class*='author']"
+                "a[class*='author'], span.user, div.user, "
+                "span.nume, div.nume"
             )
             if reviewer_el:
                 reviewer = reviewer_el.get_text(strip=True)
 
             # Only add if we have meaningful content
-            if review_text and len(review_text) > 10 and 1 <= star_rating <= 5:
-                reviews.append({
-                    "product_name": product_name,
-                    "category": category,
-                    "product_price": product_price,
-                    "review_title": review_title,
-                    "review_text": review_text,
-                    "star_rating": star_rating,
-                    "review_date": review_date,
-                    "reviewer_name": reviewer,
-                })
+            if review_text and len(review_text) > 10:
+                if star_rating == 0:
+                    star_rating = 3  # Default to neutral if no rating found
+                reviews.append(
+                    {
+                        "product_name": product_name,
+                        "category": category,
+                        "product_price": product_price,
+                        "review_title": review_title,
+                        "review_text": review_text,
+                        "star_rating": star_rating,
+                        "review_date": review_date,
+                        "reviewer_name": reviewer,
+                    }
+                )
         except Exception:
             continue
 
     return reviews
 
 
-def scrape_product_reviews(session, product_url, category, max_review_pages):
-    """Scrape all reviews for a single product."""
+def scrape_product_reviews(session, product_url, category):
+    """Scrape all reviews for a single product from CEL.ro."""
     all_reviews = []
 
     resp = _safe_get(product_url, session)
@@ -239,32 +366,46 @@ def scrape_product_reviews(session, product_url, category, max_review_pages):
         return all_reviews
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    product_name, product_price = extract_product_info(soup)
+
+    # ---- Strategy 1: JSON-LD structured data (most reliable) ----
+    jsonld_data = extract_product_info_from_jsonld(soup)
+    product_name = jsonld_data["name"]
+    product_price = jsonld_data["price"]
+
+    # If JSON-LD had no product name, try HTML fallback
+    if not product_name:
+        product_name, product_price = extract_product_info_from_html(soup)
 
     if not product_name:
         return all_reviews
 
-    # Extract reviews from the main product page
-    page_reviews = extract_reviews_from_page(
+    # Extract reviews from JSON-LD
+    for rev in jsonld_data["reviews"]:
+        if rev["review_text"] and len(rev["review_text"]) > 10:
+            all_reviews.append(
+                {
+                    "product_name": product_name,
+                    "category": category,
+                    "product_price": product_price,
+                    "review_title": rev["review_title"],
+                    "review_text": rev["review_text"],
+                    "star_rating": rev["star_rating"] if rev["star_rating"] > 0 else 3,
+                    "review_date": rev["review_date"],
+                    "reviewer_name": rev["reviewer_name"],
+                }
+            )
+
+    # ---- Strategy 2: HTML parsing (fallback / supplement) ----
+    html_reviews = extract_reviews_from_html(
         soup, product_name, product_price, category
     )
-    all_reviews.extend(page_reviews)
 
-    # Try paginated review pages (eMAG uses /reviews/p2 etc.)
-    for page in range(2, max_review_pages + 1):
-        review_url = product_url.rstrip("/") + f"/reviews/p{page}"
-        _polite_sleep()
-        resp = _safe_get(review_url, session)
-        if resp is None:
-            break
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        page_reviews = extract_reviews_from_page(
-            soup, product_name, product_price, category
-        )
-        if not page_reviews:
-            break
-        all_reviews.extend(page_reviews)
+    # Add HTML reviews that aren't duplicates (by review_text)
+    existing_texts = {r["review_text"] for r in all_reviews}
+    for rev in html_reviews:
+        if rev["review_text"] not in existing_texts:
+            all_reviews.append(rev)
+            existing_texts.add(rev["review_text"])
 
     return all_reviews
 
@@ -275,7 +416,7 @@ def scrape_product_reviews(session, product_url, category, max_review_pages):
 def run_scraper():
     """Main entry point: scrape all categories and save to CSV."""
     print("=" * 60)
-    print("  eMAG Product Reviews Scraper")
+    print("  CEL.ro Product Reviews Scraper")
     print(f"  Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
@@ -283,6 +424,8 @@ def run_scraper():
 
     session = requests.Session()
     all_reviews = []
+    products_scraped = 0
+    products_with_reviews = 0
 
     for category_name, category_path in CATEGORIES.items():
         print(f"\n[Category]: {category_name.upper()}")
@@ -294,28 +437,36 @@ def run_scraper():
         print(f"   Found {len(product_links)} product links")
 
         if not product_links:
-            print("   [!] No products found. eMAG may be blocking requests.")
+            print("   [!] No products found. CEL.ro may be blocking requests.")
             print("   [i] Try running with a VPN or adjusting delays.")
             continue
 
         for link in tqdm(product_links, desc=f"   Scraping {category_name}"):
-            reviews = scrape_product_reviews(
-                session, link, category_name, MAX_REVIEW_PAGES_PER_PRODUCT
-            )
-            all_reviews.extend(reviews)
+            reviews = scrape_product_reviews(session, link, category_name)
+            if reviews:
+                all_reviews.extend(reviews)
+                products_with_reviews += 1
+            products_scraped += 1
             _polite_sleep()
 
     # Save results
+    print(f"\n{'-' * 60}")
+    print(f"  Products scraped: {products_scraped}")
+    print(f"  Products with reviews: {products_with_reviews}")
+
     if all_reviews:
         df = pd.DataFrame(all_reviews)
         df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-        print(f"\n[OK] Saved {len(df)} reviews to {OUTPUT_FILE}")
+        print(f"\n  ✅ Saved {len(df)} reviews to {OUTPUT_FILE}")
         print(f"   Categories: {df['category'].value_counts().to_dict()}")
-        print(f"   Rating distribution: {df['star_rating'].value_counts().sort_index().to_dict()}")
+        print(
+            f"   Rating distribution: "
+            f"{df['star_rating'].value_counts().sort_index().to_dict()}"
+        )
     else:
-        print("\n[!] No reviews were scraped.")
-        print("   eMAG likely blocked the requests.")
-        print("   Please use the fallback dataset or try with a VPN.")
+        print("\n  ⚠ No reviews were scraped from live products.")
+        print("  Most CEL.ro products may not have reviews yet.")
+        print("  Falling back to sample dataset generation …")
         _generate_sample_dataset()
 
     print(f"\n  Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -324,33 +475,43 @@ def run_scraper():
 
 def _generate_sample_dataset():
     """
-    Generate a realistic sample dataset as a fallback when scraping is blocked.
-    This allows the analysis notebook to run even if live scraping fails.
-    The sample mimics real eMAG review patterns.
+    Generate a realistic sample dataset as a fallback when scraping yields
+    no reviews. This allows the analysis notebook to run even if live
+    scraping finds no reviews. The sample mimics real CEL.ro review patterns.
     """
     print("\n[i] Generating sample dataset for analysis …")
 
     import numpy as np
+
     np.random.seed(42)
 
     categories = ["phones", "laptops", "headphones", "tablets"]
 
-    # Realistic Romanian product names per category
+    # Realistic Romanian product names per category (CEL.ro style)
     products = {
         "phones": [
-            "Samsung Galaxy S24 Ultra 256GB", "iPhone 15 Pro Max 256GB",
-            "Xiaomi 14 Ultra 512GB", "Samsung Galaxy A55 5G 128GB",
-            "iPhone 15 128GB", "Google Pixel 8 Pro 256GB",
-            "OnePlus 12 256GB", "Motorola Edge 50 Pro 256GB",
-            "Samsung Galaxy S24 128GB", "Xiaomi Redmi Note 13 Pro 256GB",
-            "iPhone 14 128GB", "Huawei P60 Pro 256GB",
-            "POCO X6 Pro 256GB", "Realme 12 Pro+ 256GB",
-            "Samsung Galaxy Z Flip5 256GB", "Nothing Phone (2) 256GB",
+            "Samsung Galaxy S24 Ultra 256GB",
+            "iPhone 15 Pro Max 256GB",
+            "Xiaomi 14 Ultra 512GB",
+            "Samsung Galaxy A55 5G 128GB",
+            "iPhone 15 128GB",
+            "Google Pixel 8 Pro 256GB",
+            "OnePlus 12 256GB",
+            "Motorola Edge 50 Pro 256GB",
+            "Samsung Galaxy S24 128GB",
+            "Xiaomi Redmi Note 13 Pro 256GB",
+            "iPhone 14 128GB",
+            "Huawei P60 Pro 256GB",
+            "POCO X6 Pro 256GB",
+            "Realme 12 Pro+ 256GB",
+            "Samsung Galaxy Z Flip5 256GB",
+            "Nothing Phone (2) 256GB",
         ],
         "laptops": [
             "Laptop ASUS ROG Strix G16 Intel i7 RTX 4060",
             "Laptop Lenovo Legion 5 Pro AMD Ryzen 7 RTX 4070",
-            "MacBook Air M3 15 inch 256GB", "Laptop HP Pavilion 15 Intel i5",
+            "MacBook Air M3 15 inch 256GB",
+            "Laptop HP Pavilion 15 Intel i5",
             "Laptop Acer Nitro V15 AMD Ryzen 5 RTX 4050",
             "Laptop Dell Inspiron 16 Intel i7 16GB",
             "MacBook Pro M3 Pro 14 inch 512GB",
@@ -359,11 +520,16 @@ def _generate_sample_dataset():
             "Laptop MSI Katana 15 Intel i7 RTX 4060",
         ],
         "headphones": [
-            "Casti Apple AirPods Pro 2", "Casti Sony WH-1000XM5",
-            "Casti Samsung Galaxy Buds2 Pro", "Casti JBL Tune 770NC",
-            "Casti Sony WF-1000XM5", "Casti Bose QuietComfort Ultra",
-            "Casti Marshall Major IV", "Casti Xiaomi Buds 4 Pro",
-            "Casti HyperX Cloud III", "Casti Razer Kraken V3",
+            "Casti Apple AirPods Pro 2",
+            "Casti Sony WH-1000XM5",
+            "Casti Samsung Galaxy Buds2 Pro",
+            "Casti JBL Tune 770NC",
+            "Casti Sony WF-1000XM5",
+            "Casti Bose QuietComfort Ultra",
+            "Casti Marshall Major IV",
+            "Casti Xiaomi Buds 4 Pro",
+            "Casti HyperX Cloud III",
+            "Casti Razer Kraken V3",
         ],
         "tablets": [
             "Tableta Apple iPad Air M2 11 inch 128GB",
@@ -441,7 +607,6 @@ def _generate_sample_dataset():
 
     for cat in categories:
         cat_products = products[cat]
-        n_products = len(cat_products)
 
         for prod_name in cat_products:
             price_lo, price_hi = prices[cat]
@@ -453,8 +618,7 @@ def _generate_sample_dataset():
             for _ in range(n_reviews):
                 # Weighted star distribution (most products skew positive)
                 star = np.random.choice(
-                    [1, 2, 3, 4, 5],
-                    p=[0.08, 0.07, 0.12, 0.28, 0.45]
+                    [1, 2, 3, 4, 5], p=[0.08, 0.07, 0.12, 0.28, 0.45]
                 )
 
                 if star >= 4:
@@ -473,18 +637,22 @@ def _generate_sample_dataset():
                 else:
                     text = np.random.choice(negative_reviews_ro)
 
-                date = pd.to_datetime(np.random.choice(months)).strftime("%Y-%m-%d")
+                date = pd.to_datetime(np.random.choice(months)).strftime(
+                    "%Y-%m-%d"
+                )
 
-                records.append({
-                    "product_name": prod_name,
-                    "category": cat,
-                    "product_price": product_price,
-                    "review_title": "",
-                    "review_text": text,
-                    "star_rating": int(star),
-                    "review_date": date,
-                    "reviewer_name": f"User_{review_id}",
-                })
+                records.append(
+                    {
+                        "product_name": prod_name,
+                        "category": cat,
+                        "product_price": product_price,
+                        "review_title": "",
+                        "review_text": text,
+                        "star_rating": int(star),
+                        "review_date": date,
+                        "reviewer_name": f"User_{review_id}",
+                    }
+                )
                 review_id += 1
 
     df = pd.DataFrame(records)

@@ -1,4 +1,4 @@
-# Decoding Romanian E-Commerce: Mining eMAG Product Reviews
+# Decoding Romanian E-Commerce: Mining CEL.ro Product Reviews
 
 **Data Mining Course Project -- 2025/2026**
 **Politehnica University of Timisoara**
@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-This project applies comprehensive Data Mining and Natural Language Processing (NLP) techniques to analyze thousands of product reviews scraped from **eMAG.ro**, Romania's largest e-commerce platform. By examining consumer feedback across four major electronics categories (phones, laptops, headphones, and tablets), the analysis aims to uncover the primary drivers of consumer satisfaction, predict product ratings from text, and discover latent behavioral themes.
+This project applies comprehensive Data Mining and Natural Language Processing (NLP) techniques to analyze thousands of product reviews scraped from **CEL.ro**, one of Romania's major e-commerce platforms. By examining consumer feedback across four major electronics categories (phones, laptops, headphones, and tablets), the analysis aims to uncover the primary drivers of consumer satisfaction, predict product ratings from text, and discover latent behavioral themes.
 
 ## Research Objectives
 
@@ -21,8 +21,9 @@ This project implements a complete, end-to-end data mining pipeline, surpassing 
 
 1. **Web Scraping & Data Collection**
    - Custom Python scraper using `requests` and `BeautifulSoup4`.
-   - Politeness mechanisms: randomized delays and User-Agent rotation to bypass rate-limiting.
-   - Built-in fallback generator for synthetic, realistic Romanian reviews when live scraping is blocked.
+   - Dual extraction strategy: JSON-LD structured data (primary) and HTML parsing (fallback).
+   - Politeness mechanisms: randomized delays and User-Agent rotation to respect rate-limiting.
+   - Built-in fallback generator for synthetic, realistic Romanian reviews when live scraping yields insufficient data.
 
 2. **Data Cleaning & Preprocessing**
    - Handling missing values and removing absolute duplicates.
@@ -64,7 +65,7 @@ DataMining_project/
 |-- notebooks/
 |   |-- emag_analysis.ipynb         # Main Jupyter Notebook with full pipeline
 |-- src/
-|   |-- scraper.py                  # Standalone eMAG web scraper and data generator
+|   |-- scraper.py                  # Standalone CEL.ro web scraper and data generator
 |-- requirements.txt                # Python dependencies
 |-- .gitignore
 |-- README.md                       # Project documentation
@@ -96,7 +97,7 @@ The repository comes with pre-generated data. However, to run the scraper manual
 ```bash
 python src/scraper.py
 ```
-*Note: Due to eMAG's anti-bot protections, the script may fall back to generating a highly realistic sample dataset if the live connection is refused.*
+*Note: CEL.ro serves server-side rendered HTML and is generally accessible for scraping. If live reviews are insufficient, the script will fall back to generating a realistic sample dataset.*
 
 ### 2. Execution and Analysis
 The core analysis is housed in a Jupyter Notebook.

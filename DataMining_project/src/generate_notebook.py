@@ -42,7 +42,7 @@ def generate_notebook():
     cells = []
 
     # Title
-    cells.append(create_cell("markdown", "# 🛒 Decoding Romanian E-Commerce: Mining eMAG Product Reviews\n\n**Data Mining Course Project — 2025/2026**\n\nThis notebook contains the full data mining pipeline for analyzing product reviews from eMAG.ro across four categories: phones, laptops, headphones, and tablets. We will explore what drives consumer satisfaction, extract hidden themes, and predict ratings based on review text."))
+    cells.append(create_cell("markdown", "# 🛒 Decoding Romanian E-Commerce: Mining CEL.ro Product Reviews\n\n**Data Mining Course Project — 2025/2026**\n\nThis notebook contains the full data mining pipeline for analyzing product reviews from CEL.ro across four categories: phones, laptops, headphones, and tablets. We will explore what drives consumer satisfaction, extract hidden themes, and predict ratings based on review text."))
 
     # Section 0
     cells.append(create_cell("markdown", "## ⚙️ Section 0: Imports & Configuration\n\nHere we import all necessary libraries and configure our environment. We set standard random seeds for reproducibility and configure matplotlib for a clean, professional aesthetic."))
@@ -110,7 +110,7 @@ ROMANIAN_STOPWORDS = set([
 print("✅ Environment configured successfully.")"""))
 
     # Section 1
-    cells.append(create_cell("markdown", "## 🕸️ Section 1: Web Scraping Overview\n\n*(Topic 2: Web Scraping)*\n\nThe data for this project was collected using a custom web scraper (`src/scraper.py`) built with `requests` and `BeautifulSoup`. We targeted the internal product pages of eMAG.ro across 4 categories.\n\nSince eMAG employs strong anti-bot mechanisms, the scraper incorporates random delays and User-Agent rotation. In case the scraper is blocked, a realistic fallback dataset is automatically generated.\n\nLet's load the dataset!"))
+    cells.append(create_cell("markdown", "## 🕸️ Section 1: Web Scraping Overview\n\n*(Topic 2: Web Scraping)*\n\nThe data for this project was collected using a custom web scraper (`src/scraper.py`) built with `requests` and `BeautifulSoup`. We targeted the internal product pages of CEL.ro across 4 categories.\n\nSince live scraping can sometimes fail or yield too few reviews, the scraper incorporates a realistic fallback dataset generator.\n\nLet's load the dataset!"))
     cells.append(create_cell("code", """DATA_PATH = '../data/raw/emag_reviews_raw.csv'
 
 # Load the data
@@ -193,7 +193,7 @@ plt.xlabel('Star Rating')
 plt.ylabel('Number of Reviews')
 plt.show()"""))
 
-    cells.append(create_cell("markdown", "> **Insight:** eMAG reviews typically skew positive (4 and 5 stars). People are more likely to leave a review when they are highly satisfied or very disappointed (1 star), creating a slightly U-shaped distribution but heavily weighted towards the top."))
+    cells.append(create_cell("markdown", "> **Insight:** CEL.ro reviews typically skew positive (4 and 5 stars). People are more likely to leave a review when they are highly satisfied or very disappointed (1 star), creating a slightly U-shaped distribution but heavily weighted towards the top."))
 
     cells.append(create_cell("code", """# 3.2 Category Comparison
 plt.figure(figsize=(10, 6))
@@ -416,7 +416,7 @@ if best_model_name in ['Logistic Regression', 'SVM']:
     plt.show()"""))
 
     # Section 8
-    cells.append(create_cell("markdown", "## 🏆 Section 8: Conclusions & Key Insights\n\n### 💡 Key Takeaways:\n1. **High Baseline Satisfaction:** Romanian eMAG shoppers generally leave positive reviews (4-5 stars). Products with an average rating below 4.0 should be investigated.\n2. **Review Length signals Distress:** Angry customers write significantly longer reviews explaining their negative experiences in detail, whereas happy customers keep it brief.\n3. **Language Nuance:** Multilingual BERT handles Romanian sentiment impressively well, proving that advanced transformers outclass simple dictionary-based methods.\n4. **Predictability:** We successfully built a Machine Learning classifier that predicts whether a review is positive or negative based entirely on the text, achieving high accuracy.\n5. **Top Drivers:** The words most heavily associated with negative reviews often center around `retur` (returns), `stricat` (broken), and `baterie` (battery issues for phones/laptops).\n\n**Actionable Advice for Sellers:** Focus heavily on Quality Assurance to avoid returns, as functional defects trigger the longest, most damaging reviews.\n\n---\n*Data Mining Project 2025/2026*"))
+    cells.append(create_cell("markdown", "## 🏆 Section 8: Conclusions & Key Insights\n\n### 💡 Key Takeaways:\n1. **High Baseline Satisfaction:** Romanian CEL.ro shoppers generally leave positive reviews (4-5 stars). Products with an average rating below 4.0 should be investigated.\n2. **Review Length signals Distress:** Angry customers write significantly longer reviews explaining their negative experiences in detail, whereas happy customers keep it brief.\n3. **Language Nuance:** Multilingual BERT handles Romanian sentiment impressively well, proving that advanced transformers outclass simple dictionary-based methods.\n4. **Predictability:** We successfully built a Machine Learning classifier that predicts whether a review is positive or negative based entirely on the text, achieving high accuracy.\n5. **Top Drivers:** The words most heavily associated with negative reviews often center around `retur` (returns), `stricat` (broken), and `baterie` (battery issues for phones/laptops).\n\n**Actionable Advice for Sellers:** Focus heavily on Quality Assurance to avoid returns, as functional defects trigger the longest, most damaging reviews.\n\n---\n*Data Mining Project 2025/2026*"))
 
     notebook["cells"] = cells
 
