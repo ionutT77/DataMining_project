@@ -1,11 +1,11 @@
 """
 Amazon Electronics Reviews Downloader
 =======================================
-Downloads real Amazon product reviews from the McAuley-Lab/Amazon-Reviews-2023
-dataset hosted on HuggingFace, using huggingface_hub for direct file streaming.
+Extracts real Amazon product reviews from the McAuley-Lab/Amazon-Reviews-2023
+dataset. Uses the locally cached HuggingFace file (already downloaded).
 
-Streams large JSONL files and collects reviews for our 4 electronics categories:
-phones, laptops, headphones, tablets.
+Reads the Cell_Phones_and_Accessories JSONL and classifies reviews into
+our 4 electronics categories: phones, laptops, headphones, tablets.
 
 Output: data/raw/amazon_reviews.csv
 
@@ -18,7 +18,6 @@ import json
 import os
 import sys
 from datetime import datetime
-from tqdm import tqdm
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,171 +25,142 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "raw")
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "amazon_reviews.csv")
 
-# HuggingFace repo files to download
+# HuggingFace repo info (we use hf_hub_download to get/check the cached file)
 HF_REPO = "McAuley-Lab/Amazon-Reviews-2023"
-HF_FILES = {
-    "Cell_Phones_and_Accessories": "raw/review_categories/Cell_Phones_and_Accessories.jsonl",
-    "Electronics": "raw/review_categories/Electronics.jsonl",
-    "Computers": "raw/review_categories/Computers.jsonl",
-}
+HF_FILE = "raw/review_categories/Cell_Phones_and_Accessories.jsonl"
 
-# How many reviews to keep per source file (these files are HUGE — millions of lines)
-MAX_PER_SOURCE = 3000
-# Max lines to scan before giving up on a source
-MAX_LINES_TO_SCAN = 100_000
+# Scan more lines to get enough diverse reviews from this one big file
+MAX_REVIEWS = 9000
+MAX_LINES_TO_SCAN = 500_000
 
 # Keywords to classify reviews into our 4 project categories
 PHONE_KW = ["phone", "smartphone", "iphone", "galaxy s", "galaxy a", "pixel", "oneplus",
-            "xiaomi", "redmi", "motorola", "samsung galaxy", "cell phone"]
-LAPTOP_KW = ["laptop", "notebook", "macbook", "chromebook", "thinkpad", "rog",
-             "dell xps", "pavilion", "ideapad", "lenovo legion", "surface laptop"]
+            "xiaomi", "redmi", "motorola", "samsung galaxy", "cell phone", "mobile"]
+LAPTOP_KW = ["laptop", "notebook", "macbook", "chromebook", "thinkpad",
+             "dell xps", "pavilion", "ideapad", "surface laptop"]
 HEADPHONE_KW = ["headphone", "earphone", "earbud", "airpod", "earbuds", "headset",
-                "in-ear", "over-ear", "beats", "bose", "sony wh", "sony wf", "jbl"]
+                "in-ear", "over-ear", "beats", "bose", "sony wh", "sony wf", "jbl",
+                "wireless earbuds", "bluetooth earbuds", "noise cancelling"]
 TABLET_KW = ["tablet", "ipad", "galaxy tab", "surface pro", "kindle fire",
-             "lenovo tab", "matepad", "xiaomi pad"]
+             "lenovo tab", "fire hd", "fire tablet"]
 
 
-def classify_review(title: str, text: str, source_category: str) -> str:
-    """Classify a review into phones/laptops/headphones/tablets or None."""
+def classify_review(title, text):
+    """Classify a review into phones/laptops/headphones/tablets."""
     combined = (title + " " + text).lower()
 
-    if source_category == "Cell_Phones_and_Accessories":
-        if any(kw in combined for kw in TABLET_KW):
-            return "tablets"
-        if any(kw in combined for kw in HEADPHONE_KW):
-            return "headphones"
-        return "phones"
-
-    if source_category == "Computers":
-        if any(kw in combined for kw in TABLET_KW):
-            return "tablets"
-        if any(kw in combined for kw in LAPTOP_KW):
-            return "laptops"
-        return None  # skip desktops/peripherals
-
-    if source_category == "Electronics":
-        if any(kw in combined for kw in HEADPHONE_KW):
-            return "headphones"
-        if any(kw in combined for kw in TABLET_KW):
-            return "tablets"
-        if any(kw in combined for kw in PHONE_KW):
-            return "phones"
-        if any(kw in combined for kw in LAPTOP_KW):
-            return "laptops"
-        return None  # skip unrelated electronics
-
-    return None
+    # Check specific categories first (more specific keywords)
+    if any(kw in combined for kw in HEADPHONE_KW):
+        return "headphones"
+    if any(kw in combined for kw in TABLET_KW):
+        return "tablets"
+    if any(kw in combined for kw in LAPTOP_KW):
+        return "laptops"
+    # Default for Cell_Phones category: phones
+    return "phones"
 
 
-def download_and_parse(source_category: str, filepath: str, max_reviews: int):
-    """Download a JSONL file from HuggingFace and extract matching reviews."""
+def download_amazon_reviews():
+    """Extract Amazon electronics reviews from cached HuggingFace file."""
     from huggingface_hub import hf_hub_download
+
+    print("=" * 60)
+    print("  Amazon Electronics Reviews Downloader")
+    print("  Started at: {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    print("  Source: McAuley-Lab/Amazon-Reviews-2023 (HuggingFace)")
+    print("=" * 60)
+    sys.stdout.flush()
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Download / use cached file
+    print("\n  Downloading Cell_Phones_and_Accessories.jsonl ...")
+    print("  (This file is ~8.9 GB, first download takes time, then cached)")
+    sys.stdout.flush()
+
+    local_path = hf_hub_download(
+        repo_id=HF_REPO,
+        filename=HF_FILE,
+        repo_type="dataset",
+    )
+
+    file_size = os.path.getsize(local_path)
+    print("  File cached: {:.0f} MB".format(file_size / (1024*1024)))
+    print("  Scanning up to {:,} lines for {:,} reviews ...".format(MAX_LINES_TO_SCAN, MAX_REVIEWS))
+    sys.stdout.flush()
 
     reviews = []
     lines_read = 0
     skipped = 0
 
-    print(f"    Downloading {filepath.split('/')[-1]} from HuggingFace ...")
+    with open(local_path, "r", encoding="utf-8", buffering=8*1024*1024) as f:
+        for line in f:
+            if len(reviews) >= MAX_REVIEWS:
+                break
+            if lines_read >= MAX_LINES_TO_SCAN:
+                break
 
-    try:
-        # Download the file (cached locally after first download)
-        local_path = hf_hub_download(
-            repo_id=HF_REPO,
-            filename=filepath,
-            repo_type="dataset",
-        )
-        print(f"    File cached at: ...{local_path[-50:]}")
+            lines_read += 1
 
-        # Stream parse the JSONL file
-        file_size = os.path.getsize(local_path)
-        print(f"    File size: {file_size / (1024*1024):.0f} MB — scanning up to {MAX_LINES_TO_SCAN:,} lines ...")
+            if lines_read % 25000 == 0:
+                print("    ... scanned {:,} lines, kept {:,} reviews".format(lines_read, len(reviews)))
+                sys.stdout.flush()
 
-        with open(local_path, "r", encoding="utf-8") as f:
-            for line in tqdm(f, desc=f"    Scanning", leave=False):
-                if len(reviews) >= max_reviews:
-                    break
-                if lines_read >= MAX_LINES_TO_SCAN:
-                    break
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
-                lines_read += 1
+            text = item.get("text", "") or ""
+            title = item.get("title", "") or ""
+            rating = item.get("rating", 0)
+
+            # Skip very short reviews
+            if len(text) < 30:
+                skipped += 1
+                continue
+
+            category = classify_review(title, text)
+
+            timestamp = item.get("timestamp", 0) or item.get("sort_timestamp", 0)
+            date_str = ""
+            if timestamp:
                 try:
-                    item = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+                    date_str = datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d")
+                except (OSError, ValueError):
+                    pass
 
-                text = item.get("text", "") or ""
-                title = item.get("title", "") or ""
-                rating = item.get("rating", 0)
-
-                if len(text) < 30:
-                    skipped += 1
-                    continue
-
-                category = classify_review(title, text, source_category)
-                if category is None:
-                    skipped += 1
-                    continue
-
-                timestamp = item.get("timestamp", 0)
-                date_str = ""
-                if timestamp:
-                    try:
-                        date_str = datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d")
-                    except (OSError, ValueError):
-                        pass
-
-                reviews.append({
-                    "product_name": title[:100] if title else f"Amazon Product {item.get('asin', '')}",
-                    "category": category,
-                    "product_price": "",
-                    "review_title": title[:200],
-                    "review_text": text[:5000],
-                    "star_rating": int(rating) if rating else 3,
-                    "review_date": date_str,
-                    "reviewer_name": (item.get("user_id", "") or "")[:20],
-                    "source": "amazon",
-                    "reddit_score": "",
-                })
-
-    except Exception as e:
-        print(f"    ⚠ Error: {e}")
-
-    print(f"    Lines scanned: {lines_read:,}, Skipped: {skipped:,}, Kept: {len(reviews):,}")
-    return reviews
-
-
-def download_amazon_reviews():
-    """Download Amazon electronics reviews from HuggingFace."""
-    print("=" * 60)
-    print("  Amazon Electronics Reviews Downloader")
-    print(f"  Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("  Source: McAuley-Lab/Amazon-Reviews-2023 (HuggingFace)")
-    print("=" * 60)
-
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    all_reviews = []
-
-    for source_cat, filepath in HF_FILES.items():
-        print(f"\n  [{source_cat}]")
-        reviews = download_and_parse(source_cat, filepath, MAX_PER_SOURCE)
-        all_reviews.extend(reviews)
-        print(f"    ✅ Running total: {len(all_reviews):,} reviews")
+            reviews.append({
+                "product_name": f"Product {item.get('asin', '')}",
+                "category": category,
+                "product_price": "",
+                "review_title": title[:200],
+                "review_text": text[:5000],
+                "star_rating": int(rating) if rating else 3,
+                "review_date": date_str,
+                "reviewer_name": (item.get("user_id", "") or "")[:20],
+                "source": "amazon",
+                "reddit_score": "",
+            })
 
     # Save results
-    print(f"\n{'-' * 60}")
-    print(f"  Total reviews collected: {len(all_reviews):,}")
+    print("\n" + "-" * 60)
+    print("  Lines scanned: {:,}".format(lines_read))
+    print("  Skipped (too short): {:,}".format(skipped))
+    print("  Total reviews collected: {:,}".format(len(reviews)))
 
-    if all_reviews:
-        df = pd.DataFrame(all_reviews)
+    if reviews:
+        df = pd.DataFrame(reviews)
         df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-        print(f"\n  ✅ Saved {len(df):,} reviews to {OUTPUT_FILE}")
-        print(f"  Categories: {df['category'].value_counts().to_dict()}")
-        print(f"  Rating distribution: {df['star_rating'].value_counts().sort_index().to_dict()}")
+        print("\n  Saved {:,} reviews to {}".format(len(df), OUTPUT_FILE))
+        print("  Categories: {}".format(df['category'].value_counts().to_dict()))
+        print("  Rating distribution: {}".format(df['star_rating'].value_counts().sort_index().to_dict()))
     else:
-        print("  ⚠ No reviews collected.")
+        print("  No reviews collected.")
 
-    print(f"\n  Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("\n  Finished at: {}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
     print("=" * 60)
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":

@@ -21,15 +21,17 @@ torch>=2.0.0
 # Web scraping
 beautifulsoup4>=4.12.0
 requests>=2.31.0
+praw>=7.7.0
+
+# HuggingFace (Amazon dataset download)
+huggingface_hub>=0.20.0
+datasets>=2.14.0
 
 # Topic modeling visualization
 pyLDAvis>=3.4.0
 
 # Utilities
 tqdm>=4.65.0
-
-# Translation (for VADER sentiment on Romanian text)
-deep-translator>=1.11.0
 
 # Jupyter
 jupyter>=1.0.0
