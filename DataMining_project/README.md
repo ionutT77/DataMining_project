@@ -1,4 +1,4 @@
-# Decoding E-Commerce: Mining eMAG and Amazon Product Reviews
+# Decoding E-Commerce: Mining eMAG, Amazon, and Best Buy Product Reviews
 
 **Data Mining Course Project -- 2025/2026**
 **Politehnica University of Timisoara**
@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-This project applies comprehensive Data Mining and Natural Language Processing (NLP) techniques to analyze thousands of product reviews from two major e-commerce platforms: **eMAG** (Romanian market) and **Amazon** (Global market). By examining consumer feedback across four major electronics categories (phones, laptops, headphones, and tablets), the analysis aims to uncover the primary drivers of consumer satisfaction, predict product ratings from text, and discover latent behavioral themes.
+This project applies comprehensive Data Mining and Natural Language Processing (NLP) techniques to analyze thousands of product reviews from three major e-commerce platforms: **eMAG** (Romanian market), **Amazon** (Global market), and **Best Buy** (Global/Secondary market). By examining consumer feedback across four major electronics categories (phones, laptops, headphones, and tablets), the analysis aims to uncover the primary drivers of consumer satisfaction, predict product ratings from text, and discover latent behavioral themes.
 
 The project is structured to meet and exceed the course requirements, strictly following the 6 core Data Mining requirements across multiple datasets.
 
@@ -23,6 +23,7 @@ This project implements a complete, end-to-end data mining pipeline, fulfilling 
 
 1. **Data Collection (Requirement 1)**
    - Custom Python scraper for eMAG using `requests` and `BeautifulSoup4` with dual extraction strategy (JSON-LD and HTML parsing).
+   - Custom Python scraper for Best Buy generating a robust English electronics dataset.
    - Automated downloader script for the Amazon 2023 Electronics dataset (via HuggingFace caching).
 
 2. **Data Cleaning & Preprocessing (Requirement 2)**
@@ -64,8 +65,10 @@ DataMining_project/
 |-- notebooks/
 |   |-- emag_analysis.ipynb         # Jupyter Notebook with full eMAG pipeline
 |   |-- amazon_analysis.ipynb       # Jupyter Notebook with full Amazon pipeline
+|   |-- bestbuy_analysis.ipynb         # Jupyter Notebook with full Best Buy pipeline
 |-- src/
 |   |-- scraper.py                  # Standalone eMAG web scraper and data generator
+|   |-- scrape_bestbuy.py              # Standalone Best Buy web scraper and data generator
 |   |-- download_amazon.py          # Script to download Amazon reviews via HF caching
 |   |-- generate_amazon_notebook.py # Script to autogenerate the Amazon notebook
 |-- requirements.txt                # Python dependencies
@@ -103,14 +106,18 @@ python src/scraper.py
 
 # For Amazon (English):
 python src/download_amazon.py
+
+# For Best Buy (English):
+python src/scrape_bestbuy.py
 ```
-*Note: The eMAG script falls back to generating a realistic sample dataset if live scraping is restricted.*
+*Note: The eMAG and Best Buy scripts fall back to generating a realistic sample dataset if live scraping is restricted.*
 
 ### 2. Execution and Analysis
-The core analysis is housed in two Jupyter Notebooks.
+The core analysis is housed in three Jupyter Notebooks.
 ```bash
 jupyter notebook notebooks/emag_analysis.ipynb
 jupyter notebook notebooks/amazon_analysis.ipynb
+jupyter notebook notebooks/bestbuy_analysis.ipynb
 ```
 Execute the cells sequentially in each notebook. 
 *Note: The Multilingual BERT section is computationally intensive. Running this specific section on Google Colab with GPU acceleration is recommended for large datasets.*

@@ -1,8 +1,8 @@
-# Data Mining Project Documentation: Multi-Dataset Analysis (eMAG and Amazon)
+# Data Mining Project Documentation: Multi-Dataset Analysis (eMAG, Amazon, Best Buy)
 
-This documentation explains the technical choices, motivations, and interpretations of the results for the Data Mining project step-by-step. We implemented a robust, multi-dataset pipeline analyzing data from **eMAG.ro / CEL.ro** (Romanian market) and **Amazon** (Global market) to demonstrate the real-world applicability of the concepts studied in class across different languages.
+This documentation explains the technical choices, motivations, and interpretations of the results for the Data Mining project step-by-step. We implemented a robust, multi-dataset pipeline analyzing data from **eMAG.ro / CEL.ro** (Romanian market), **Amazon** (Global market), and **Best Buy** (Global market) to demonstrate the real-world applicability of the concepts studied in class across different languages.
 
-*Note: Due to robust anti-bot protections preventing live web scraping on eMAG/CEL.ro, the Romanian dataset is synthetically generated to mimic real-world reviews, while the Amazon dataset uses authentic academic data.*
+*Note: Due to robust anti-bot protections preventing live web scraping on eMAG/CEL.ro and Best Buy, these datasets are synthetically generated to mimic real-world reviews, while the Amazon dataset uses authentic academic data.*
 
 ## 🎯 Project Objective (Academic Requirements)
 
@@ -40,6 +40,7 @@ Instead of using a generic pre-cleaned dataset, we aimed to collect realistic da
 
 **Implementation:**
 - **eMAG Scraper / Synthetic Generator (`src/scraper.py`):** The scraper simulates human behavior using `BeautifulSoup` to parse HTML, implementing User-Agent rotation and random delays. Due to strict anti-bot protections (403 Forbidden errors) on live platforms, the script relies on a fallback generator that produces highly realistic synthetic data to allow the notebook pipeline to run.
+- **Best Buy Scraper (`src/scrape_bestbuy.py`):** Operates on similar principles as the eMAG scraper, targeting the global secondary market with a realistic fallback for English reviews.
 - **Amazon Downloader (`src/download_amazon.py`):** This script efficiently downloads massive data packets from the academic "Amazon Reviews 2023" dataset via the HuggingFace `datasets` library, filtering and categorizing only the desired electronics.
 
 ---
@@ -117,7 +118,7 @@ The ultimate goal of Data Mining is predictive (Lab 9). Given historical reviews
 
 ## 🎓 Final Conclusions
 
-1. The project demonstrates the successful application of a complete Data Mining pipeline (from collection to prediction) on both the **Romanian (synthetic eMAG/CEL.ro)** and **English (Amazon)** markets. All **6 core requirements** were successfully implemented.
-2. User behavior follows distinct patterns: while rating distributions are heavily skewed positive ("J-shaped") in both datasets, verbosity varies. On Amazon, highly satisfied customers tend to write longer reviews, whereas the Romanian dataset shows longer reviews from dissatisfied customers explaining technical defects.
-3. Analyzing multiple electronics categories provided a robust dataset that allowed the LDA algorithm to detect distinct, actionable topics (such as screen quality, battery life, and return policies) across both datasets.
+1. The project demonstrates the successful application of a complete Data Mining pipeline (from collection to prediction) on the **Romanian (synthetic eMAG/CEL.ro)** and **English (Amazon and Best Buy)** markets. All **6 core requirements** were successfully implemented.
+2. User behavior follows distinct patterns: while rating distributions are heavily skewed positive ("J-shaped") in all datasets, verbosity varies. On Amazon, highly satisfied customers tend to write longer reviews, whereas the Romanian and Best Buy datasets show longer reviews from dissatisfied customers explaining technical defects.
+3. Analyzing multiple electronics categories provided a robust dataset that allowed the LDA algorithm to detect distinct, actionable topics (such as screen quality, battery life, and return policies) across all three datasets.
 4. Classic linear models applied over TF-IDF matrices proved to have excellent predictive power for sentiment analysis, which was further validated by complex transformer models like Multilingual BERT.
